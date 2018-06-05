@@ -10,3 +10,7 @@
 | PUSHER_APP_ID     | App ID of the Pusher account      |
 | PUSHER_PUBLIC_KEY | Public key of the Pusher account  |
 | PUSHER_SECRET_KEY | Secret key of the Pusher account  |
+
+## How to run
+Run `npm install`
+Run `node index.js`
