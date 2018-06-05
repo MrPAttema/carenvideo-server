@@ -13,4 +13,5 @@
 
 ## How to run
 Run `npm install`
+
 Run `node index.js`
