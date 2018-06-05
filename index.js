@@ -1,20 +1,22 @@
+const dotenv = require('dotenv').config();
 const webpush = require('web-push');
+const Pusher = require('pusher');
 const path = require('path');
 const express = require('express');
 const bodyParser = require('body-parser');
 const Datastore = require('nedb');
 const cors = require('cors');
 
-const gcmServerKey = 'AAAAEFHh8-4:APA91bFWuoio6hVb1Nrx3CV5DPCc_Zeqvi1EohpUvEQpSdwdQd696x6HBy0vJPrhjc3fwOobP_DPklCNsxxIU7mW_RQ1vct_DLThKbOSnGRLRFYlEPVa4W381FFLtRRs3FS4YMASNqOI';
+const gcmServerKey = process.env.GCM_SERVER_KEY;
 webpush.setGCMAPIKey(gcmServerKey);
 
 const vapidKeys = {
-  publicKey: 'BOvQGEjUy9zXOPx6bI4hL5sSQaGLE95k0EuOe2Yb1PCkfKyQDBt7cGRYgpuQN3C3WcpAjwzRNmW-LTcDUcHsxUU',
-  privateKey: 'jDYm9D1zCd2OvUufTQ_8grPkacY9BTHi4fV2LUEwHwo'
+  publicKey: process.env.VAPID_PUBLIC_KEY,
+  privateKey: process.env.VAPID_PRIVATE_KEY
 };
 
 webpush.setVapidDetails(
-  'mailto:info@carenvideo.nl',
+  process.env.VAPID_MAIL_TO,
   vapidKeys.publicKey,
   vapidKeys.privateKey
 );
@@ -82,6 +84,7 @@ const app = express();
 app.use(cors());
 app.use(bodyParser.json());
 app.use(bodyParser.text());
+app.use(bodyParser.urlencoded({ extended: false }))
 
 app.post('/api/save-subscription/', function (req, res) {
   if (!isValidSaveRequest(req, res)) {
@@ -178,6 +181,34 @@ app.post('/api/trigger-push-msg/', function (req, res) {
       }
     }));
   });
+});
+
+const pusher = new Pusher({
+  appId: process.env.PUSHER_APP_ID,
+  key: process.env.PUSHER_PUBLIC_KEY,
+  secret: process.env.PUSHER_SECRET_KEY,
+  cluster: 'eu',
+  encrypted: true
+});
+
+app.post('/pusher/auth/presence', function (req, res) {
+  console.log(req.body)
+
+  var socketId = req.body.socket_id;
+  var channel = req.body.channel_name;
+  var presenceData = {
+      user_id: req.body.id
+  };
+  var auth = pusher.authenticate(socketId, channel, presenceData);
+  console.log(auth)
+  res.send(auth);
+});
+
+app.post('/pusher/auth/private', function (req, res) {
+  var socketId = req.body.socket_id;
+  var channel = req.body.channel_name;
+  var auth = pusher.authenticate(socketId, channel);
+  res.send(auth);
 });
 
 const port = process.env.PORT || 9012;
