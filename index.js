@@ -282,12 +282,10 @@ app.get('/ical/subscribe', function (req, res) {
             event.description = calendarItems[item].description
             comp.addSubcomponent(vevent)
           }
-
-          console.log(comp.toString())
           
           res.status(200)
           res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
-          res.send(comp)
+          res.send(comp.toString())
 
         })
       } else {
