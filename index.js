@@ -274,14 +274,18 @@ app.get('/ical/subscribe', function (req, res) {
           comp.updatePropertyWithValue('version', '2.0')
           
           for (item in calendarItems) {
+            let description = (calendarItems[item].url) ? calendarItems[item].description + ' Link: ' + calendarItems[item].url : calendarItems[item].description
+
             let vevent = new ICAL.Component('vevent')
             let event = new ICAL.Event(vevent)
             event.summary = calendarItems[item].title
             event.startDate = ICAL.Time.fromString(calendarItems[item].startDate)
             event.endDate = ICAL.Time.fromString(calendarItems[item].endDate)
-            event.description = calendarItems[item].description
+            event.description = description
             comp.addSubcomponent(vevent)
           }
+
+          console.log(comp.toString())
           
           res.status(200)
           res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
