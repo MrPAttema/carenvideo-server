@@ -6,7 +6,6 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const Datastore = require('nedb');
 const jwt = require('jsonwebtoken');
-const ICAL = require('ical.js');
 const ics = require('ics');
 const cors = require('cors');
 
