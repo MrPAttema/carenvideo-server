@@ -7,6 +7,7 @@ const bodyParser = require('body-parser');
 const Datastore = require('nedb');
 const jwt = require('jsonwebtoken');
 const ICAL = require('ical.js');
+const ics = require('ics');
 const cors = require('cors');
 
 const gcmServerKey = process.env.GCM_SERVER_KEY;
@@ -245,6 +246,19 @@ function getCalendarItem(id) {
   });
 }
 
+function getCalendarItems(id) {
+  return new Promise(function(resolve, reject) {
+    calendarDB.find({added_by: id}, function(err, docs) {
+      if (err) {
+        reject(err);
+        return;
+      }
+
+      resolve(docs);
+    })
+  })
+}
+
 app.post('/ical/add-calendar-item', function (req, res) {
   return saveCalendarItem(req.body)
   .then(function(calendarItemId) {
@@ -263,33 +277,98 @@ app.post('/ical/add-calendar-item', function (req, res) {
   });
 });
 
+app.get('/ical/get-calendar-items', function (req, res) {
+  return getCalendarItems(Number(req.query.user_id))
+  .then(calendarItems => {
+    res.setHeader('Content-Type', 'application/json');
+    res.send(JSON.stringify({ data: { items: calendarItems } }));
+  })
+  .catch(err => {
+    res.status(500);
+    res.setHeader('Content-Type', 'application/json');
+    res.send(JSON.stringify({
+      error: {
+        id: 'unable-to-load-calendar-item',
+        message: 'The calendar items could not be loaded.'
+      }
+    }));
+  })
+})
+
 app.get('/ical/subscribe', function (req, res) {
   if (req.query && req.query.token) {
     jwt.verify(req.query.token, process.env.CAREN_ZORGT_SECRET_KEY, (err, decoded) => {
       if (!err) {
         return getCalendarItem(decoded.caren_id)
         .then(calendarItems => {
-          let comp = new ICAL.Component(['vcalendar', [], []])
-          comp.updatePropertyWithValue('calscale', 'GREGORIAN')
-          comp.updatePropertyWithValue('version', '2.0')
-          
-          for (item in calendarItems) {
-            let description = (calendarItems[item].url) ? calendarItems[item].description + ' Link: ' + calendarItems[item].url : calendarItems[item].description
+          const events = []
 
-            let vevent = new ICAL.Component('vevent')
-            let event = new ICAL.Event(vevent)
-            event.summary = calendarItems[item].title
-            event.startDate = ICAL.Time.fromString(calendarItems[item].startDate)
-            event.endDate = ICAL.Time.fromString(calendarItems[item].endDate)
-            event.description = description
-            comp.addSubcomponent(vevent)
+          for (item in calendarItems) {
+            const startDate = []
+            const endDate = []
+            
+            // TODO: Use REGEX to make this somewhat more beautyful...
+            let splitDate = calendarItems[item].startDate.split("-")
+            startDate.push(Number(splitDate[0]))
+            startDate.push(Number(splitDate[1]))
+            splitDate = splitDate[2].split("T")
+            startDate.push(Number(splitDate[0]))
+            splitDate = splitDate[1].split(":")
+            let initalHour = Number(splitDate[0])
+            let offset = splitDate[2].split("+")
+            let hour = 00
+            if (offset.length >= 2) {
+              hour = initalHour + Number(offset[1])
+            } else {
+              hour = initalHour
+            }
+            startDate.push(hour)
+            startDate.push(Number(splitDate[1]))
+
+            let splitEndDate = calendarItems[item].endDate.split("-")
+            endDate.push(Number(splitEndDate[0]))
+            endDate.push(Number(splitEndDate[1]))
+            splitEndDate = splitEndDate[2].split("T")
+            endDate.push(Number(splitEndDate[0]))
+            splitEndDate = splitEndDate[1].split(":")
+            let initialEndHour = Number(splitEndDate[0])
+            let endOffset = splitEndDate[2].split("+")
+            let endHour = 00
+            if (offset.length >= 2) {
+              endHour = initialEndHour + Number(offset[1])
+            } else {
+              endHour = initialEndHour
+            }
+            endDate.push(endHour)
+            endDate.push(Number(splitEndDate[1]))
+
+            let event = {
+              title: calendarItems[item].title,
+              description: calendarItems[item].description,
+              start: startDate,
+              end: endDate,
+              url: calendarItems[item].url
+            }
+
+            events.push(event)
           }
 
-          console.log(comp.toString())
-          
-          res.status(200)
-          res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
-          res.send(comp.toString())
+          ics.createEvents(events, (error, value) => {
+            if (!error) {
+              res.status(200)
+              res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
+              res.send(value)
+            } else {
+              console.log('Error creating ical event: ', error)
+              res.status(500)
+              res.send(JSON.stringify({
+                error: {
+                  id: 'unable-to-build-calendar',
+                  message: 'Could not build calendar'
+                }
+              }));
+            }
+          })
 
         })
       } else {
