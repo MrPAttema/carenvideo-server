@@ -5,6 +5,8 @@ const path = require('path');
 const express = require('express');
 const bodyParser = require('body-parser');
 const Datastore = require('nedb');
+const jwt = require('jsonwebtoken');
+const ICAL = require('ical.js');
 const cors = require('cors');
 
 const gcmServerKey = process.env.GCM_SERVER_KEY;
@@ -25,6 +27,11 @@ const db = new Datastore({
   filename: path.join(__dirname, 'subscription-storage.db'),
   autoload: true
 });
+
+const calendarDB = new Datastore({
+  filename: path.join(__dirname, 'calendar-items.db'),
+  autoload: true
+})
 
 function saveSubscriptionToDatabase(subscription) {
   return new Promise(function(resolve, reject) {
@@ -152,8 +159,6 @@ const triggerPushMsg = function(subscription, dataToSend) {
 app.post('/api/trigger-push-msg/', function (req, res) {
   // NOTE: This API endpoint should be secure (i.e. protected with a login
   // check OR not publicly available.)
-
-  console.log(req.body)
   const dataToSend = JSON.stringify(req.body);
 
   return getSubscriptionsFromDatabase(req.body.user_id)
@@ -183,6 +188,8 @@ app.post('/api/trigger-push-msg/', function (req, res) {
   });
 });
 
+// START PUSHER
+
 const pusher = new Pusher({
   appId: process.env.PUSHER_APP_ID,
   key: process.env.PUSHER_PUBLIC_KEY,
@@ -192,15 +199,12 @@ const pusher = new Pusher({
 });
 
 app.post('/pusher/auth/presence', function (req, res) {
-  console.log(req.body)
-
   var socketId = req.body.socket_id;
   var channel = req.body.channel_name;
   var presenceData = {
       user_id: req.body.id
   };
   var auth = pusher.authenticate(socketId, channel, presenceData);
-  console.log(auth)
   res.send(auth);
 });
 
@@ -210,6 +214,99 @@ app.post('/pusher/auth/private', function (req, res) {
   var auth = pusher.authenticate(socketId, channel);
   res.send(auth);
 });
+
+// END PUSHER
+
+// START ICAL
+
+function saveCalendarItem(item) {
+  return new Promise(function(resolve, reject) {
+    calendarDB.insert(item, function(err, newDoc) {
+      if (err) {
+        reject(err);
+        return;
+      }
+
+      resolve(newDoc._id);
+    });
+  });
+};
+
+function getCalendarItem(id) {
+  return new Promise(function(resolve, reject) {
+    calendarDB.find({user_id: id}, function(err, docs) {
+      if (err) {
+        reject(err);
+        return;
+      }
+
+      resolve(docs);
+    })
+  });
+}
+
+app.post('/ical/add-calendar-item', function (req, res) {
+  return saveCalendarItem(req.body)
+  .then(function(calendarItemId) {
+    res.setHeader('Content-Type', 'application/json');
+    res.send(JSON.stringify({ data: { success: true } }));
+  })
+  .catch(function(err) {
+    res.status(500);
+    res.setHeader('Content-Type', 'application/json');
+    res.send(JSON.stringify({
+      error: {
+        id: 'unable-to-save-calendar-item',
+        message: 'The calendar item was received but could not be saved to our database.'
+      }
+    }));
+  });
+});
+
+app.get('/ical/subscribe', function (req, res) {
+  if (req.query && req.query.token) {
+    jwt.verify(req.query.token, process.env.CAREN_ZORGT_SECRET_KEY, (err, decoded) => {
+      if (!err) {
+        return getCalendarItem(decoded.caren_id)
+        .then(calendarItems => {
+          let comp = new ICAL.Component(['vcalendar', [], []])
+          comp.updatePropertyWithValue('calscale', 'GREGORIAN')
+          comp.updatePropertyWithValue('version', '2.0')
+          
+          for (item in calendarItems) {
+            let description = (calendarItems[item].url) ? calendarItems[item].description + ' Link: ' + calendarItems[item].url : calendarItems[item].description
+
+            let vevent = new ICAL.Component('vevent')
+            let event = new ICAL.Event(vevent)
+            event.summary = calendarItems[item].title
+            event.startDate = ICAL.Time.fromString(calendarItems[item].startDate)
+            event.endDate = ICAL.Time.fromString(calendarItems[item].endDate)
+            event.description = description
+            comp.addSubcomponent(vevent)
+          }
+
+          console.log(comp.toString())
+          
+          res.status(200)
+          res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
+          res.send(comp.toString())
+
+        })
+      } else {
+        console.log('Error: ', err)
+        res.status(500)
+        res.send(JSON.stringify({
+          error: {
+            id: 'unable-to-build-calendar',
+            message: 'The calendar token was received but could not be processed'
+          }
+        }));
+      }
+    })
+  }
+});
+
+// END ICAL
 
 const port = process.env.PORT || 9012;
 
