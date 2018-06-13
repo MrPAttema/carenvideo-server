@@ -279,6 +279,19 @@ function updateCalendarItem(id, item) {
   })
 }
 
+function deleteCalendarItem(id) {
+  return new Promise(function(resolve, reject) {
+    calendarDB.remove({ _id: id }, {}, function (err, numRemoved) {
+      if (err) {
+        reject(err)
+        return
+      }
+
+      resolve(numRemoved)
+    })
+  })
+}
+
 app.post('/ical/add-calendar-item', function (req, res) {
   return saveCalendarItem(req.body)
   .then(function(calendarItemId) {
@@ -328,6 +341,24 @@ app.post('/ical/update-calendar-item', function (req, res) {
       error: {
         id: 'unable-to-edit-calendar-item',
         message: 'The calendar items could not be edited.'
+      }
+    }));
+  })
+})
+
+app.post('/ical/delete-calendar-item', function (req, res) {
+  return deleteCalendarItem(req.body.id)
+  .then(deletedItem => {
+    res.setHeader('Content-Type', 'application/json');
+    res.send(JSON.stringify({ data: { success: true } }));
+  })
+  .catch(err => {
+    res.status(500);
+    res.setHeader('Content-Type', 'application/json');
+    res.send(JSON.stringify({
+      error: {
+        id: 'unable-to-delete-calendar-item',
+        message: 'The calendar item could not be deleted.'
       }
     }));
   })
