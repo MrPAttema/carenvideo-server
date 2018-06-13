@@ -258,6 +258,27 @@ function getCalendarItems(id) {
   })
 }
 
+function updateCalendarItem(id, item) {
+  return new Promise(function(resolve, reject) {
+    calendarDB.update({_id: id}, { $set: { 
+        user_id: item.user_id,
+        title: item.title,
+        description: item.description,
+        startDate: item.startDate,
+        endDate: item.endDate,
+        url: item.url,
+        added_by: item.added_by
+      } }, {}, function (err, docs) {
+      if (err) {
+        reject(err)
+        return
+      }
+
+      resolve(docs)
+    })
+  })
+}
+
 app.post('/ical/add-calendar-item', function (req, res) {
   return saveCalendarItem(req.body)
   .then(function(calendarItemId) {
@@ -289,6 +310,24 @@ app.get('/ical/get-calendar-items', function (req, res) {
       error: {
         id: 'unable-to-load-calendar-item',
         message: 'The calendar items could not be loaded.'
+      }
+    }));
+  })
+})
+
+app.post('/ical/update-calendar-item', function (req, res) {
+  return updateCalendarItem(req.body.id, req.body.item)
+  .then(updatedItem => {
+    res.setHeader('Content-Type', 'application/json');
+    res.send(JSON.stringify({ data: { success: true } }));
+  })
+  .catch(err => {
+    res.status(500);
+    res.setHeader('Content-Type', 'application/json');
+    res.send(JSON.stringify({
+      error: {
+        id: 'unable-to-edit-calendar-item',
+        message: 'The calendar items could not be edited.'
       }
     }));
   })
