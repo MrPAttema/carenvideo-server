@@ -311,6 +311,7 @@ app.post('/ical/add-calendar-item', function (req, res) {
 });
 
 app.get('/ical/get-calendar-items', function (req, res) {
+  console.log('hoi')
   return getCalendarItems(Number(req.query.user_id))
   .then(calendarItems => {
     res.setHeader('Content-Type', 'application/json');
