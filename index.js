@@ -9,30 +9,49 @@ const jwt = require('jsonwebtoken');
 const ics = require('ics');
 const cors = require('cors');
 
+/**
+ * Firebase Cloudmessaging Console key
+ */
 const gcmServerKey = process.env.GCM_SERVER_KEY;
 webpush.setGCMAPIKey(gcmServerKey);
 
+/**
+ * VAPID keys
+ */
 const vapidKeys = {
   publicKey: process.env.VAPID_PUBLIC_KEY,
   privateKey: process.env.VAPID_PRIVATE_KEY
 };
 
+/**
+ * Add VAPID keys and email adress to webpush instance.
+ */
 webpush.setVapidDetails(
   process.env.VAPID_MAIL_TO,
   vapidKeys.publicKey,
   vapidKeys.privateKey
 );
 
+/**
+ * Database instance used for the push notification subscriptions.
+ */
 const db = new Datastore({
   filename: path.join(__dirname, 'subscription-storage.db'),
   autoload: true
 });
 
+/**
+ * Database instance used for the calendar items.
+ */
 const calendarDB = new Datastore({
   filename: path.join(__dirname, 'calendar-items.db'),
   autoload: true
 })
 
+/**
+ * Saves subscription to the database and resolves the id.
+ * @param {object} subscription 
+ */
 function saveSubscriptionToDatabase(subscription) {
   return new Promise(function(resolve, reject) {
     db.insert(subscription, function(err, newDoc) {
@@ -46,6 +65,10 @@ function saveSubscriptionToDatabase(subscription) {
   });
 };
 
+/**
+ * Gets one subscription from the database for a specific user.
+ * @param {Number} id 
+ */
 function getSubscriptionsFromDatabase(id) {
   return new Promise(function(resolve, reject) {
     db.findOne({user_id: id}, function(err, docs) {
@@ -59,6 +82,10 @@ function getSubscriptionsFromDatabase(id) {
   });
 }
 
+/**
+ * Delete a subscription from the database.
+ * @param {String} subscriptionId 
+ */
 function deleteSubscriptionFromDatabase(subscriptionId) {
   return new Promise(function(resolve, reject) {
   db.remove({_id: subscriptionId }, {}, function(err) {
@@ -72,6 +99,12 @@ function deleteSubscriptionFromDatabase(subscriptionId) {
   });
 }
 
+/**
+ * Checks whether a request has an endpoint.
+ * @param {Object} req 
+ * @param {Object} res 
+ * @returns {Boolean}
+ */
 const isValidSaveRequest = (req, res) => {
   if (!req.body || !req.body.endpoint) {
     res.status(400);
@@ -87,12 +120,18 @@ const isValidSaveRequest = (req, res) => {
   return true;
 };
 
+/**
+ * Declare express app and add CORS + bodyparser
+ */
 const app = express();
 app.use(cors());
 app.use(bodyParser.json());
 app.use(bodyParser.text());
 app.use(bodyParser.urlencoded({ extended: false }))
 
+/**
+ * Save subscription endpoint
+ */
 app.post('/api/save-subscription/', function (req, res) {
   if (!isValidSaveRequest(req, res)) {
     return;
@@ -115,6 +154,9 @@ app.post('/api/save-subscription/', function (req, res) {
   });
 });
 
+/**
+ * Get subscriptions endpoint
+ */
 app.post('/api/get-subscriptions/', function (req, res) {
   // TODO: This should be secured / not available publicly.
   //       this is for demo purposes only.
@@ -143,6 +185,11 @@ app.post('/api/get-subscriptions/', function (req, res) {
   });
 });
 
+/**
+ * Triggers a web push notifiation for a subscription and sends data with it.
+ * @param {Object} subscription 
+ * @param {Object} dataToSend 
+ */
 const triggerPushMsg = function(subscription, dataToSend) {
   const options = { TTL: 60 }
 
@@ -156,6 +203,9 @@ const triggerPushMsg = function(subscription, dataToSend) {
   });
 };
 
+/**
+ * Trigger web push notification with a message endpoint.
+ */
 app.post('/api/trigger-push-msg/', function (req, res) {
   // NOTE: This API endpoint should be secure (i.e. protected with a login
   // check OR not publicly available.)
@@ -189,7 +239,9 @@ app.post('/api/trigger-push-msg/', function (req, res) {
 });
 
 // START PUSHER
-
+/**
+ * Pusher initialization.
+ */
 const pusher = new Pusher({
   appId: process.env.PUSHER_APP_ID,
   key: process.env.PUSHER_PUBLIC_KEY,
@@ -198,6 +250,9 @@ const pusher = new Pusher({
   encrypted: true
 });
 
+/**
+ * Pusher presence channel authentication endpoint.
+ */
 app.post('/pusher/auth/presence', function (req, res) {
   var socketId = req.body.socket_id;
   var channel = req.body.channel_name;
@@ -208,6 +263,9 @@ app.post('/pusher/auth/presence', function (req, res) {
   res.send(auth);
 });
 
+/**
+ * Pusher private channel authentication endpoint.
+ */
 app.post('/pusher/auth/private', function (req, res) {
   var socketId = req.body.socket_id;
   var channel = req.body.channel_name;
@@ -219,6 +277,10 @@ app.post('/pusher/auth/private', function (req, res) {
 
 // START ICAL
 
+/**
+ * Save a calendar item to the database and resolves the item id.
+ * @param {Object} item 
+ */
 function saveCalendarItem(item) {
   return new Promise(function(resolve, reject) {
     calendarDB.insert(item, function(err, newDoc) {
@@ -232,6 +294,10 @@ function saveCalendarItem(item) {
   });
 };
 
+/**
+ * Gets calendar items from the database for a specific user id.
+ * @param {Number} id 
+ */
 function getCalendarItem(id) {
   return new Promise(function(resolve, reject) {
     calendarDB.find({user_id: id}, function(err, docs) {
@@ -245,6 +311,10 @@ function getCalendarItem(id) {
   });
 }
 
+/**
+ * Gets all the calendar items from the database for those added by a specific user.
+ * @param {Number} id 
+ */
 function getCalendarItems(id) {
   return new Promise(function(resolve, reject) {
     calendarDB.find({added_by: id}, function(err, docs) {
@@ -258,6 +328,11 @@ function getCalendarItems(id) {
   })
 }
 
+/**
+ * Updates a calendar item.
+ * @param {Number} id 
+ * @param {Object} item 
+ */
 function updateCalendarItem(id, item) {
   return new Promise(function(resolve, reject) {
     calendarDB.update({_id: id}, { $set: { 
@@ -279,6 +354,10 @@ function updateCalendarItem(id, item) {
   })
 }
 
+/**
+ * Deletes a calendar item.
+ * @param {String} id 
+ */
 function deleteCalendarItem(id) {
   return new Promise(function(resolve, reject) {
     calendarDB.remove({ _id: id }, {}, function (err, numRemoved) {
@@ -292,6 +371,9 @@ function deleteCalendarItem(id) {
   })
 }
 
+/**
+ * Add calendar item endpoint
+ */
 app.post('/ical/add-calendar-item', function (req, res) {
   return saveCalendarItem(req.body)
   .then(function(calendarItemId) {
@@ -310,6 +392,9 @@ app.post('/ical/add-calendar-item', function (req, res) {
   });
 });
 
+/**
+ * Get calendar items endpoint.
+ */
 app.get('/ical/get-calendar-items', function (req, res) {
   console.log('hoi')
   return getCalendarItems(Number(req.query.user_id))
@@ -329,6 +414,9 @@ app.get('/ical/get-calendar-items', function (req, res) {
   })
 })
 
+/**
+ * Update calendar item endpoint
+ */
 app.post('/ical/update-calendar-item', function (req, res) {
   return updateCalendarItem(req.body.id, req.body.item)
   .then(updatedItem => {
@@ -347,6 +435,9 @@ app.post('/ical/update-calendar-item', function (req, res) {
   })
 })
 
+/**
+ * Delete calendar item endpoint.
+ */
 app.post('/ical/delete-calendar-item', function (req, res) {
   return deleteCalendarItem(req.body.id)
   .then(deletedItem => {
@@ -365,6 +456,9 @@ app.post('/ical/delete-calendar-item', function (req, res) {
   })
 })
 
+/**
+ * iCalendar subscription endpoint for Carenzorgt.nl
+ */
 app.get('/ical/subscribe', function (req, res) {
   if (req.query && req.query.token) {
     jwt.verify(req.query.token, process.env.CAREN_ZORGT_SECRET_KEY, (err, decoded) => {
